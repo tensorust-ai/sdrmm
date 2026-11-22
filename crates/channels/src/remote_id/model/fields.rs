@@ -37,6 +37,11 @@ impl RemoteIdFrame {
             ("address", "Address", text(Some(&self.address))),
             ("channel", "Channel", count(self.channel)),
             ("ssid", "SSID", text(self.ssid.as_deref())),
+            (
+                "trust",
+                "Trust",
+                text(self.trust.as_ref().map(|trust| trust.verdict.as_str())),
+            ),
             ("counter", "Counter", count(self.counter)),
             (
                 "level",
@@ -264,6 +269,7 @@ mod tests {
             ssid: None,
             level_dbfs: -50.0,
             messages,
+            trust: None,
         }
     }
 

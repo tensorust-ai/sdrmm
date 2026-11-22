@@ -156,6 +156,7 @@ impl Channel for RemoteIdChannel {
                 },
             ),
         }
+        self.tracker.advance(iq.len(), self.link.input_rate_hz());
     }
 
     fn rejected(&self) -> u32 {

@@ -243,6 +243,7 @@ ffmpeg-the-third = { version = "6.0.0", default-features = false, features = ["c
 # Persistence
 rusqlite = { version = "0.41", features = ["bundled"] }
 jiff = "0.2"
+remoteid = "0.3.2"
 dirs = "7"
 
 # Static asset embedding

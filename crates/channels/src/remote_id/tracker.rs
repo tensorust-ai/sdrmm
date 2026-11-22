@@ -8,6 +8,10 @@ use crate::remote_id::RemoteIdPhy;
 
 use crate::remote_id::RemoteIdTransport;
 
+use crate::remote_id::RemoteIdTrust;
+
+use remoteid::{Observation, Transmitter, Transport};
+
 use super::odid;
 
 const REMEMBERED: usize = 256;
@@ -27,6 +31,9 @@ pub(crate) struct Heard<'a> {
 pub(crate) struct Tracker {
     ids: VecDeque<(String, String)>,
     rejected: u32,
+    trust: remoteid::Tracker,
+    samples: u64,
+    now_ms: u64,
 }
 
 impl Tracker {
@@ -42,6 +49,12 @@ impl Tracker {
         self.rejected = self.rejected.saturating_add(1);
     }
 
+    /// Moves the receiver clock on by `samples` at `rate_hz`; the trust checks run on it.
+    pub(crate) fn advance(&mut self, samples: usize, rate_hz: f64) {
+        self.samples = self.samples.saturating_add(samples as u64);
+        self.now_ms = (self.samples as f64 * 1_000.0 / rate_hz) as u64;
+    }
+
     pub(crate) fn frame(&mut self, heard: Heard<'_>) -> Option<RemoteIdFrame> {
         let Ok(messages) = odid::parse(heard.payload) else {
             self.rejected = self.rejected.saturating_add(1);
@@ -54,6 +67,7 @@ impl Tracker {
             }
             None => self.recall(&heard.address),
         };
+        let trust = self.judge(&heard);
         Some(RemoteIdFrame {
             transport: heard.transport,
             phy: heard.phy,
@@ -64,6 +78,32 @@ impl Tracker {
             ssid: heard.ssid,
             level_dbfs: heard.level_dbfs,
             messages,
+            trust,
+        })
+    }
+
+    fn judge(&mut self, heard: &Heard<'_>) -> Option<RemoteIdTrust> {
+        let transport = match heard.transport {
+            RemoteIdTransport::BluetoothLegacy => Transport::Bluetooth4,
+            RemoteIdTransport::BluetoothExtended => Transport::Bluetooth5,
+            RemoteIdTransport::WifiBeacon => Transport::WifiBeacon,
+            RemoteIdTransport::WifiNan => Transport::WifiNan,
+            RemoteIdTransport::WifiBeaconFrench | RemoteIdTransport::WifiBeaconDji => return None,
+        };
+        let mac = mac(&heard.address)?;
+        let from = match transport {
+            Transport::WifiBeacon | Transport::WifiNan => Transmitter::Wifi(mac),
+            _ => Transmitter::Ble(mac),
+        };
+        let observation = Observation::new(transport, heard.counter, heard.payload, self.now_ms);
+        let assessment = self.trust.observe(from, &observation).assessment;
+        Some(RemoteIdTrust {
+            verdict: assessment.verdict.name().to_owned(),
+            reasons: assessment
+                .reasons
+                .iter()
+                .map(|reason| reason.name().to_owned())
+                .collect(),
         })
     }
 
@@ -86,6 +126,7 @@ impl Tracker {
             ssid: heard.ssid,
             level_dbfs: heard.level_dbfs,
             messages,
+            trust: None,
         }
     }
 
@@ -107,3 +148,15 @@ impl Tracker {
             .map(|(_, id)| id.clone())
     }
 }
+
+fn mac(address: &str) -> Option<[u8; 6]> {
+    let mut bytes = [0; 6];
+    let mut parts = address.split(':');
+    for byte in &mut bytes {
+        *byte = u8::from_str_radix(parts.next()?, 16).ok()?;
+    }
+    parts.next().is_none().then_some(bytes)
+}
+
+#[cfg(test)]
+mod tests;

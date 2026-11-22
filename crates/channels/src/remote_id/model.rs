@@ -286,6 +286,16 @@ pub struct RemoteIdFrame {
     pub ssid: Option<String>,
     pub level_dbfs: f32,
     pub messages: Vec<RemoteIdMessage>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trust: Option<RemoteIdTrust>,
+}
+
+/// Whether the transmitter behind a frame can be believed, from the `remoteid` trust checks.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct RemoteIdTrust {
+    pub verdict: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub reasons: Vec<String>,
 }
 
 impl RemoteIdFrame {
@@ -498,6 +508,7 @@ mod model_tests {
                     text: "Survey".to_owned(),
                 },
             ],
+            trust: None,
         };
         let json = serde_json::to_value(&frame).unwrap();
         assert_eq!(json["messages"][0]["type"], "location");
@@ -523,6 +534,7 @@ mod model_tests {
             ssid: Some("RID-1".to_owned()),
             level_dbfs: -60.0,
             messages: vec![],
+            trust: None,
         };
         assert_eq!(frame.station(), "60:60:1F:00:00:01");
         assert_eq!(frame.position(), None);
